@@ -62,17 +62,38 @@ class Projection(object):
         return result
 
 
+class Aggregation(object):
+    def __init__(self, filescan):
+        pass
+
+    def aggregate(self, data, aggregator):
+        if aggregator == 'count':
+            return len(data)
+
+        elif aggregator == 'sum':
+            return sum(float(_) for _ in data)
+
+        elif aggregator == 'average':
+            return sum(float(_) for _ in data) / float(len(data))
+
+
 if __name__ == '__main__':
     filescan = FileScan('ratings')
     selection = Selection(filescan)
     projection = Projection(filescan)
+    aggregation = Aggregation(filescan)
+    entries = []
 
     while True:
-        result = filescan.next()[:10]
+        result = filescan.next()
+
+        if not result:
+            break
+
         result = selection.select(result, 'movieId', 253)
         result = projection.project(result, 'rating')
-        print result
+        entries += result
 
-        break
+    print aggregation.aggregate(entries, 'average')
 
     filescan.close()
