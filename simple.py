@@ -34,17 +34,29 @@ class FileScan(object):
 
 
 class Selection(object):
-    def selection(column, identifier):
-        index = column
+    def __init__(self, filescan):
+        self.columns = filescan.columns
+
+    def select(self, data, column, value):
+        index = self.columns.index(column)
+        
+        result = []
+        for row in data:
+            if row.split(',')[index] == str(value):
+                result.append(row)
+
+        return result
 
 
 if __name__ == '__main__':
     filescan = FileScan('ratings')
+    selection = Selection(filescan)
 
     while True:
-        result = filescan.next()
+        result = filescan.next()[:10]
+        result = selection.select(result, 'movieId', 253)
+        print result
 
-        if not result:
-            break
+        break
 
     filescan.close()
