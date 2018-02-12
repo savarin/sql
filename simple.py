@@ -48,13 +48,29 @@ class Selection(object):
         return result
 
 
+class Projection(object):
+    def __init__(self, filescan):
+        self.columns = filescan.columns
+
+    def project(self, data, column):
+        index = self.columns.index(column)
+
+        result = []
+        for row in data:
+            result.append(row.split(',')[index])
+
+        return result
+
+
 if __name__ == '__main__':
     filescan = FileScan('ratings')
     selection = Selection(filescan)
+    projection = Projection(filescan)
 
     while True:
         result = filescan.next()[:10]
         result = selection.select(result, 'movieId', 253)
+        result = projection.project(result, 'rating')
         print result
 
         break
