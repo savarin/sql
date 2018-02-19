@@ -1,10 +1,20 @@
-import os
-import sys
-import time
+import abc
+import heapq
+import Queue
 from datetime import datetime as dt
 
 
-class FileScan(object):
+class Node:
+    __metaclass__ = abc.ABCMeta
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        raise NotImplementedError
+
+
+class FileScan(Node):
     def __init__(self, table):
         self.path = table + '.csv'
         self.file = open(self.path, 'r')
@@ -30,72 +40,135 @@ class FileScan(object):
             self.load()
 
         if self.rows:
-            return self.rows.pop().split(',')
+            row = self.rows.pop().split(',')
+            return row
 
-        sys.stderr.write(str(dt.now()) + ' WARN EOF reached!\n')
-        return None
+        raise StopIteration
 
     def close(self):
         self.file.close()
 
 
-class Selection(object):
-    def __init__(self, filescan, column, value):
-        self.index = filescan.columns.index(column)
+class Selection(Node):
+    def __init__(self, node, key, value):
+        self.node = node
+        self.columns = node.columns
+
+        self.index = node.columns.index(key)
         self.value = value
 
-    def map(self, row):
-        if row and int(row[self.index]) == self.value:
-            return row
+    def next(self):
+        while True:
+            row = self.node.next()
+
+            if row[self.index] == self.value:
+                return row
 
 
-class Projection(object):
-    def __init__(self, filescan, columns):
-        self.indices = [filescan.columns.index(column) for column in columns]
+class Projection(Node):
+    def __init__(self, node, columns):
+        self.node = node
+        self.columns = columns
 
-    def map(self, row):
-        if row:
-            return [row[index] for index in self.indices]
+        self.indices = [node.columns.index(_) for _ in columns]
+
+    def next(self):
+        row = self.node.next()
+        return [row[_] for _ in self.indices]
 
 
-class Aggregation(object):
-    def __init__(self, filescan, aggregator):
-        self.aggregator = aggregator
+class Sort(Node):
+    def __init__(self, node, key):
+        self.node = node
+        self.columns = node.columns
 
-    def reduce(self, results):
-        if self.aggregator == 'count':
-            return len(results)
+        self.index = node.columns.index(key)
+        self.collect = False
+        self.queue = Queue.Queue()
 
-        elif self.aggregator == 'sum':
-            return sum(float(_) for _ in results)
+    def load(self):
+        heap = []
 
-        elif self.aggregator == 'average':
-            return sum(float(_) for _ in results) / float(len(results))
+        while True:
+            try:
+                row = self.node.next()
+                heapq.heappush(heap, (row[self.index], row))
+
+            except StopIteration:
+                break
+
+        while heap:
+            self.queue.put(heapq.heappop(heap)[1])
+
+    def next(self):
+        if self.collect:
+            if not self.queue.empty():
+                return self.queue.get()
+
+            raise StopIteration
+
+        self.collect = True
+        self.load()
+
+        return self.queue.get()
+
+
+class Distinct(Node):
+    def __init__(self, node):
+        self.node = node
+        self.columns = node.columns
+
+        self.prior = None
+
+    def next(self):
+        while True:
+            row = self.node.next()
+
+            if row != self.prior:
+                self.prior = row
+                return row
+
+
+class Aggregate(Node):
+    def __init__(self, node):
+        self.node = node
+        self.columns = node.columns
+
+        self.collect = False
+        self.rows = []
+
+    def load(self):
+        while True:
+            try:
+                row = self.node.next()
+                self.rows.append(row[0])
+
+            except StopIteration:
+                break
+
+    def next(self):
+        if not self.collect:
+            self.collect = True
+            self.load()
+
+        if self.rows:
+            result = sum(float(_) for _ in self.rows) / float(len(self.rows))
+            self.rows = None
+            return result
+
+        raise StopIteration
 
 
 if __name__ == '__main__':
-    filescan = FileScan('ratings')
-    selection = Selection(filescan, 'movieId', 3)
-    projection = Projection(filescan, ['rating'])
-    aggregation = Aggregation(filescan, 'average')
-    results = []
+    filescan = FileScan('mini')
+    query = Aggregate(Distinct(Sort(Projection(Selection(filescan, 'userId', '2'), ['rating']), 'rating')))
 
     while True:
-        result = filescan.next()
+        try:
+            result = query.next()
+            print result
 
-        if not result:
+        except StopIteration:
             break
-
-        if os.getenv('SQL_DEBUG') and not filescan.counter % 1000000:
-            counter = filescan.counter / 1000000
-            sys.stderr.write(str(dt.now()) + ' INFO ' + str(counter) + ' mm rows\n')
-
-        result = selection.map(result)
-        result = projection.map(result)
-
-        if result:
-            results += result
-
-    print aggregation.reduce(results)
 
     filescan.close()
