@@ -40,7 +40,7 @@ class FileScan(Node):
             self.load()
 
         if self.rows:
-            row = self.rows.pop().split(',')
+            row = self.rows.pop(0).split(',')
             return row
 
         raise StopIteration
@@ -159,9 +159,68 @@ class Aggregate(Node):
         raise StopIteration
 
 
+class NestedLoopsJoin(Node):
+    def __init__(self, left, right, key):
+        self.left, self.right = left, right
+        self.columns = left.columns + [_ for _ in right.columns if _ != key]
+
+        self.key = key
+        self.collect = False
+        self.rows = []
+
+    def load(self):
+        left_index = self.left.columns.index(self.key)
+        right_index = self.right.columns.index(self.key)
+        left_rows = []
+        right_rows = []
+
+        while True:
+            try:
+                left_row = self.left.next()
+                left_rows.append(left_row)
+
+            except StopIteration:
+                break
+
+        while True:
+            try:
+                right_row = self.right.next()
+                right_rows.append(right_row)
+
+            except StopIteration:
+                break
+
+        for left_row in left_rows:
+            for right_row in right_rows:
+                if left_row[left_index] == right_row[right_index]:
+                    right_row.pop(right_index)
+                    self.rows.append(left_row + right_row)
+
+    def next(self):
+        if self.collect:
+            if self.rows:
+                return self.rows.pop(0)
+
+            raise StopIteration
+
+        self.collect = True
+        self.load()
+
+        return self.rows.pop(0)
+
+
 if __name__ == '__main__':
-    filescan = FileScan('mini')
-    query = Aggregate(Distinct(Sort(Projection(Selection(filescan, 'userId', '2'), ['rating']), 'rating')))
+    left = FileScan('mini')
+    right = FileScan('movies')
+
+    query = NestedLoopsJoin(Projection(Selection(left,
+                                                 'userId', '4'),
+                                       ['movieId', 'rating']),
+                            Projection(right,
+                                       ['movieId', 'title']),
+                            'movieId')
+
+    print query.columns
 
     while True:
         try:
@@ -171,4 +230,5 @@ if __name__ == '__main__':
         except StopIteration:
             break
 
-    filescan.close()
+    left.close()
+    right.close()
