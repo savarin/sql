@@ -65,8 +65,6 @@ class HashJoin(Node):
     def load(self):
         left_index = self.left.columns.index(self.key)
         right_index = self.right.columns.index(self.key)
-        left_rows = []
-        right_rows = []
         hash_table = collections.defaultdict(list)
 
         while True:
