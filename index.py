@@ -7,24 +7,25 @@ class Node(object):
         self.values = []
         self.leaf = True
 
-    def is_full(self):
-        return len(self.keys) == self.order
-
     def add(self, key, value):
         if not self.keys:
             self.keys.append(key)
-            self.values.append(value)
+            self.values.append([value])
             return None
 
         for i, item in enumerate(self.keys):
-            if key < item:
+            if key == item:
+                self.values[i].append(value)
+                break
+
+            elif key < item:
                 self.keys = self.keys[:i] + [key] + self.keys[i:]
-                self.values = self.values[:i] + [value] + self.values[i:]
+                self.values = self.values[:i] + [[value]] + self.values[i:]
                 break
 
             elif i + 1 == len(self.keys):
                 self.keys.append(key)
-                self.values.append(value)
+                self.values.append([value])
                 break
 
     def split(self):
@@ -41,6 +42,9 @@ class Node(object):
         self.keys = [right.keys[0]]
         self.values = [left, right]
         self.leaf = False
+
+    def is_full(self):
+        return len(self.keys) == self.order
 
     def show(self, counter=0):
         print counter, str(self.keys)
@@ -71,7 +75,7 @@ class BPlusTree(object):
                 parent.values = parent.values[:i] + child.values + parent.values[i:]
                 break
 
-           elif i + 1 == len(parent.keys):
+            elif i + 1 == len(parent.keys):
                 parent.keys += [pivot]
                 parent.values += child.values
                 break
@@ -91,6 +95,18 @@ class BPlusTree(object):
 
             if parent and not parent.is_full():
                 self.merge(parent, child, index)
+
+    def retrieve(self, key):
+        child = self.root
+
+        while not child.leaf:
+            child, index = self.find(child, key)
+
+        for i, item in enumerate(child.keys):
+            if key == item:
+                return child.values[i]
+
+        return None
 
     def show(self):
         self.root.show()
